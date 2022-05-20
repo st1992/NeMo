@@ -579,7 +579,16 @@ class ParallelAttention(MegatronModule):
             ).to(torch.cuda.current_device())
         self.layer_type = layer_type
 
-    def _checkpointed_attention_forward(self, query_layer, key_layer, value_layer, attention_mask):
+    def _checkpointed_attention_forward(
+        self,
+        query_layer,
+        key_layer,
+        value_layer,
+        attention_mask,
+        layer_past=None,
+        get_key_value=False,
+        rotary_pos_emb=None,
+    ):
         """Forward method with activation checkpointing."""
 
         def custom_forward(*inputs):
@@ -596,7 +605,15 @@ class ParallelAttention(MegatronModule):
             return output_
 
         hidden_states = tensor_parallel.checkpoint(
-            custom_forward, False, query_layer, key_layer, value_layer, attention_mask
+            custom_forward,
+            False,
+            query_layer,
+            key_layer,
+            value_layer,
+            attention_mask,
+            layer_past,
+            get_key_value,
+            rotary_pos_emb,
         )
 
         return hidden_states
@@ -1203,6 +1220,7 @@ class ParallelTransformerLayer_(MegatronModule):
         normalization='layernorm',
         transformer_block_type='pre_ln',
         headscale=False,
+        sequence_parallel=False,
     ):
         super(ParallelTransformerLayer_, self).__init__()
 
@@ -1278,7 +1296,9 @@ class ParallelTransformerLayer_(MegatronModule):
 
             # Layernorm on the attention output
             if normalization == 'layernorm':
-                self.post_attention_layernorm = get_layer_norm(hidden_size, layernorm_epsilon, persist_layer_norm)
+                self.post_attention_normformer_norm = get_layer_norm(
+                    hidden_size, layernorm_epsilon, persist_layer_norm, sequence_parallel
+                )
             else:
                 self.post_attention_layernorm = MixedFusedRMSNorm(hidden_size, layernorm_epsilon)
 
@@ -1312,7 +1332,7 @@ class ParallelTransformerLayer_(MegatronModule):
             if transformer_block_type == 'normformer':
                 if normalization == 'layernorm':
                     self.post_inter_attention_normformer_norm = get_layer_norm(
-                        hidden_size, layernorm_epsilon, persist_layer_norm
+                        hidden_size, layernorm_epsilon, persist_layer_norm, sequence_parallel
                     )
                 else:
                     self.post_inter_attention_normformer_norm = MixedFusedRMSNorm(hidden_size, layernorm_epsilon)
@@ -1320,7 +1340,7 @@ class ParallelTransformerLayer_(MegatronModule):
             # Layernorm on the attention output.
             if normalization == 'layernorm':
                 self.post_inter_attention_layernorm = get_layer_norm(
-                    hidden_size, layernorm_epsilon, persist_layer_norm
+                    hidden_size, layernorm_epsilon, persist_layer_norm, sequence_parallel
                 )
             else:
                 self.post_inter_attention_layernorm = MixedFusedRMSNorm(hidden_size, layernorm_epsilon)
@@ -1351,14 +1371,15 @@ class ParallelTransformerLayer_(MegatronModule):
             if transformer_block_type == 'normformer':
                 if normalization == 'layernorm':
                     self.post_inter_attention_normformer_norm = get_layer_norm(
-                        hidden_size, layernorm_epsilon, persist_layer_norm
+                        hidden_size, layernorm_epsilon, persist_layer_norm, sequence_parallel
                     )
                 else:
                     self.post_inter_attention_normformer_norm = MixedFusedRMSNorm(hidden_size, layernorm_epsilon)
+
             # Layernorm on the attention output.
             if normalization == 'layernorm':
                 self.post_inter_attention_layernorm = get_layer_norm(
-                    hidden_size, layernorm_epsilon, persist_layer_norm
+                    hidden_size, layernorm_epsilon, persist_layer_norm, sequence_parallel
                 )
             else:
                 self.post_inter_attention_layernorm = MixedFusedRMSNorm(hidden_size, layernorm_epsilon)
