@@ -497,7 +497,7 @@ class ParallelAttention(MegatronModule):
         megatron_legacy=False,
         bias=True,
         headscale=False,
-        recompute_granularity=None,
+        activations_checkpoint_granularity=None,
         sequence_parallel=False,
     ):
         super(ParallelAttention, self).__init__()
@@ -553,7 +553,7 @@ class ParallelAttention(MegatronModule):
             headscale=headscale,
             sequence_parallel=sequence_parallel,
         )
-        self.checkpoint_core_attention = recompute_granularity == 'selective'
+        self.checkpoint_core_attention = activations_checkpoint_granularity == 'selective'
 
         # Output.
         self.dense = tensor_parallel.RowParallelLinear(
@@ -1222,6 +1222,7 @@ class ParallelTransformerLayer_(MegatronModule):
         normalization='layernorm',
         transformer_block_type='pre_ln',
         headscale=False,
+        activations_checkpoint_granularity=None,
         sequence_parallel=False,
     ):
         super(ParallelTransformerLayer_, self).__init__()
@@ -1253,15 +1254,26 @@ class ParallelTransformerLayer_(MegatronModule):
 
         self.fp32_residual_connection = fp32_residual_connection  # if true move residual connections to fp32
 
+        # Layernorm on the input data.
+        if normalization == 'layernorm':
+            self.input_layernorm = get_layer_norm(
+                hidden_size, layernorm_epsilon, persist_layer_norm, sequence_parallel
+            )
+        else:
+            self.input_layernorm = MixedFusedRMSNorm(hidden_size, layernorm_epsilon)
+
         self.hidden_dropout = hidden_dropout
         self.attention_dropout = attention_dropout
         self.bias_dropout_fusion = bias_dropout_fusion  # if true, enable bias dropout fusion
+
         # Self attention.
         # retrieval_decoder_after_self_attn skips the self attention
         if self.layer_type != LayerType.retrieval_decoder_after_self_attn:
             # Layernorm on the input data.
             if normalization == 'layernorm':
-                self.input_layernorm = get_layer_norm(hidden_size, layernorm_epsilon, persist_layer_norm)
+                self.input_layernorm = get_layer_norm(
+                    hidden_size, layernorm_epsilon, persist_layer_norm, sequence_parallel
+                )
             else:
                 self.input_layernorm = MixedFusedRMSNorm(hidden_size, layernorm_epsilon)
 
@@ -1286,15 +1298,9 @@ class ParallelTransformerLayer_(MegatronModule):
                 megatron_legacy=megatron_legacy,
                 bias=bias,
                 headscale=headscale,
+                activations_checkpoint_granularity=activations_checkpoint_granularity,
+                sequence_parallel=sequence_parallel,
             )
-            # Normformer normalization
-            if transformer_block_type == 'normformer':
-                if normalization == 'layernorm':
-                    self.post_attention_normformer_norm = get_layer_norm(
-                        hidden_size, layernorm_epsilon, persist_layer_norm
-                    )
-                else:
-                    self.post_attention_normformer_norm = MixedFusedRMSNorm(hidden_size, layernorm_epsilon)
 
             # Layernorm on the attention output
             if normalization == 'layernorm':
@@ -1329,6 +1335,8 @@ class ParallelTransformerLayer_(MegatronModule):
                 megatron_legacy=megatron_legacy,
                 bias=bias,
                 headscale=headscale,
+                activations_checkpoint_granularity=activations_checkpoint_granularity,
+                sequence_parallel=sequence_parallel,
             )
             # Normformer normalization
             if transformer_block_type == 'normformer':
