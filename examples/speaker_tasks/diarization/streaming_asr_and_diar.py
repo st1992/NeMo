@@ -102,6 +102,19 @@ from nemo.utils import logging
 # from ctcdecode import OnlineCTCBeamDecoder, CTCBeamDecoder
 from pyctcdecode import build_ctcdecoder
 
+# GRadio input
+import gradio as gr
+import torch
+import time
+import librosa
+import soundfile
+import nemo.collections.asr as nemo_asr
+import tempfile
+import os
+import uuid
+import time
+import time
+import numpy as np
 seed_everything(42)
 
 def timeit(method):
@@ -297,24 +310,6 @@ class FrameBatchASR_Logits_Sample(FrameBatchASR_Logits):
             # # self.frame_bufferer.get_frame_buffers(feat_frame.cpu().numpy()[1:])
 
 
-def callback_sim(asr_diar, uniq_id, buffer_counter, sdata, frame_count, time_info, status):
-    start_time = time.time()
-    asr_diar.buffer_counter = buffer_counter
-    sampled_seg_sig = sdata[asr_diar.CHUNK_SIZE*(asr_diar.buffer_counter):asr_diar.CHUNK_SIZE*(asr_diar.buffer_counter+1)]
-    asr_diar.uniq_id = uniq_id
-    asr_diar.signal = sdata
-    words, timestamps, pred_diar_labels = asr_diar.transcribe(sampled_seg_sig)
-    print("words: ", words)
-    print("timestamps: ", timestamps)
-    if asr_diar.buffer_start >= 0 and (pred_diar_labels != [] and pred_diar_labels != None):
-        asr_diar._update_word_and_word_ts(words, timestamps)
-        string_out = asr_diar._get_speaker_label_per_word(uniq_id, asr_diar.word_seq, asr_diar.word_ts_seq, pred_diar_labels)
-        write_txt(f"{asr_diar.diar._out_dir}/print_script.sh", string_out.strip())
-        
-    ETA = time.time()-start_time 
-    if asr_diar.diar.params['force_real_time']:
-        assert ETA < asr_diar.frame_len, "The process has failed to be run in real-time."
-        time.sleep(1.0 - ETA*1.0)
 
 class OnlineClusteringDiarizer(ClusteringDiarizer, ASR_DIAR_OFFLINE):
 # class OnlineClusteringDiarizer(ClusteringDiarizer):
@@ -529,7 +524,6 @@ class OnlineClusteringDiarizer(ClusteringDiarizer, ASR_DIAR_OFFLINE):
         add_new_emb_to_history = True
 
         if len(self.history_embedding_buffer_emb) > 0:
-            # if emb_in.shape[0] <= self.index_dict['max_embed_count']:
             if total_segments_processed_count <= self.index_dict['max_embed_count']:
                 # If the number of embeddings is decreased compared to the last trial,
                 # then skip embedding merging.
@@ -593,10 +587,7 @@ class OnlineClusteringDiarizer(ClusteringDiarizer, ASR_DIAR_OFFLINE):
              
             self.history_embedding_buffer_emb = np.vstack(total_emb)
             self.history_embedding_buffer_label = np.hstack(total_cluster_labels)
-            try:
-                assert self.history_embedding_buffer_emb.shape[0] == history_n, f"History embedding size is not maintained correctly."
-            except:
-                import ipdb; ipdb.set_trace()
+            assert self.history_embedding_buffer_emb.shape[0] == history_n, f"History embedding size is not maintained correctly."
         else:
             total_emb.append(self.history_embedding_buffer_emb)
             total_cluster_labels.append(self.history_embedding_buffer_label)
@@ -605,17 +596,26 @@ class OnlineClusteringDiarizer(ClusteringDiarizer, ASR_DIAR_OFFLINE):
         print(f"hist_curr_boundary: {hist_curr_boundary}")
         print(f"self.history_buffer_seg_end: {self.history_buffer_seg_end}")
         # curr_clustered_segments =  np.where(segment_indexes_mat >= hist_curr_boundary)[0]
+
         curr_clustered_segments =  np.where(segment_indexes_mat >= self.history_buffer_seg_end)[0]
-        total_emb.append(emb_in[curr_clustered_segments])
-        # total_emb.append(emb_in[hist_curr_boundary:])
-        # assert len(segment_indexes_mat) == (segment_indexes_mat[-1]+1)
-        # total_cluster_labels.append(self.Y_fullhist[hist_curr_boundary:])
+
+        # Edge case when the number of segments decrease and number of embedding falls short for the labels.
+        if emb_in[curr_clustered_segments].shape[0] < self._current_buffer_segment_count:
+            d_e = self._current_buffer_segment_count - emb_in[curr_clustered_segments].shape[0]
+            fill_in_emb = np.tile(emb_in[curr_clustered_segments][-1], (d_e,1))
+            emb_curr = np.vstack((emb_in[curr_clustered_segments], fill_in_emb))
+        else:
+            emb_curr = emb_in[curr_clustered_segments]
+
+        total_emb.append(emb_curr)
+        
         # Before perform clustering, we attach the current_n number of estimated speaker labels from the previous clustering result.
         total_cluster_labels.append(self.Y_fullhist[-current_n:])
 
         history_and_current_emb = np.vstack(total_emb)
         history_and_current_labels = np.hstack(total_cluster_labels)
         assert history_and_current_emb.shape[0] == len(history_and_current_labels)
+
         
         self.last_emb_in_length = total_segments_processed_count
         self.index_dict['max_embed_count'] = max(total_segments_processed_count, self.index_dict['max_embed_count'])
@@ -726,10 +726,12 @@ class OnlineClusteringDiarizer(ClusteringDiarizer, ASR_DIAR_OFFLINE):
 
 
     def print_time_colored(self, string_out, speaker, start_point, end_point, params, replace_time=False):
+        params['color'] == False
         if params['color']:
             color = self.color_palette[speaker]
         else:
             color = ''
+        # color = ''
 
         datetime_offset = 16 * 3600
         if float(start_point) > 3600:
@@ -767,7 +769,7 @@ class OnlineClusteringDiarizer(ClusteringDiarizer, ASR_DIAR_OFFLINE):
         oracle_num_speakers=None,
         max_num_speaker: int = 8,
         min_samples_for_NMESC: int = 6,
-        enhanced_count_thres: int = 80,
+        enhanced_count_thres: int = 120,
         max_rp_threshold: float = 0.15,
         sparse_search_volume: int = 30,
         fixed_thres: float = 0.0,
@@ -881,7 +883,6 @@ class OnlineClusteringDiarizer(ClusteringDiarizer, ASR_DIAR_OFFLINE):
         Y = spectral_model.predict(affinity_mat)
         Y = Y.cpu().numpy()
         Y_out = self.matchLabels(org_mat, Y, add_new)
-        # return Y
         return Y_out
 
     
@@ -1045,8 +1046,6 @@ class OnlineClusteringDiarizer(ClusteringDiarizer, ASR_DIAR_OFFLINE):
     def online_diarization(self, asr_diar, vad_ts):
         if asr_diar.buffer_start < 0:
             return []
-        # if len(vad_ts) == 0:
-        # or len(audio_signal) == 0:
         
         for scale_idx, (window, shift) in self.multiscale_args_dict['scale_dict'].items():
             self.embs_array[self.uniq_id][scale_idx] = None
@@ -1187,6 +1186,7 @@ class ASRWithDiarOnline:
           frame_overlap: duration of overlaps before and after current frame, seconds
           offset: number of symbols to drop for smooth streaming
         '''
+        self.audio_queue_buffer = np.array([])
         self.params = params
         self.use_cuda = self.params['use_cuda']
         if self.use_cuda:
@@ -1478,7 +1478,7 @@ class ASRWithDiarOnline:
         # # self.diar.segment_abs_time_range_list[self.diar.uniq_id][self.diar.base_scale_index] = segment_ranges
         # return string_labels
     
-    def _get_speaker_label_per_word(self, uniq_id, words, word_ts_list, pred_diar_labels):
+    def _get_speaker_label_per_word(self, words, word_ts_list, pred_diar_labels):
         params = self.diar.params
         start_point, end_point, speaker = pred_diar_labels[0].split()
         word_pos, idx = 0, 0
@@ -1503,7 +1503,7 @@ class ASRWithDiarOnline:
         string_out = self.break_lines(string_out)
         string_out = string_out.replace('#', ' ')
         if self.rttm_file_path:
-            string_out = self._print_DER_info(uniq_id, string_out, pred_diar_labels, params)
+            string_out = self._print_DER_info(self.diar.uniq_id, string_out, pred_diar_labels, params)
         else:
             logging.info(
                 "Streaming Diar [{}][frame-  {}th  ]:".format(
@@ -1528,6 +1528,7 @@ class ASRWithDiarOnline:
             else:
                 return_string_out.append(org_chunk)
         return '\n'.join(return_string_out)
+
 
     @staticmethod
     def get_timestamp_in_sec(word_ts_stt_end, params):
@@ -1656,7 +1657,7 @@ class ASRWithDiarOnline:
 
     @timeit
     def _run_ASR_decoder(self, buffer, frame_mask):
-        logging.info(f"Running ASR model {self.params['ASR_pretrained_model']}")
+        # logging.info(f"Running ASR model {self.params['ASR_pretrained_model']}")
         hyps, tokens_list, _  = get_wer_feat_logit_single(buffer,
                                                     self.frame_asr,
                                                     self.chunk_len_in_sec,
@@ -1716,19 +1717,10 @@ class ASRWithDiarOnline:
             segment_raw_audio_list.extend(sigs_list)
             segment_abs_time_range_list.extend(sig_rangel_list)
             segment_indexes.extend(sig_indexes)
-        try:
-            assert len(segment_raw_audio_list) == len(segment_abs_time_range_list) == len(segment_indexes)
-        except:
-            import ipdb; ipdb.set_trace()
+        assert len(segment_raw_audio_list) == len(segment_abs_time_range_list) == len(segment_indexes)
         return segment_raw_audio_list, \
                segment_abs_time_range_list, \
                segment_indexes
-        
-            # self.diar.segment_raw_audio_list.extend(sigs_list)
-            # self.diar.segment_abs_time_range_list.extend(sig_rangel_list)
-                
-        # return self.diar.segment_raw_audio_list, \
-               # self.diar.segment_abs_time_range_list
     
     def _get_new_cursor_for_update(self, segment_raw_audio_list, segment_abs_time_range_list, segment_indexes):
         """
@@ -1748,18 +1740,6 @@ class ASRWithDiarOnline:
             else:
                 break
         return cursor_for_old_segments
-        # cursor_for_old_segments = self.frame_start
-        # while True and len(self.diar.segment_raw_audio_list) > 0:
-            # t_range = self.diar.segment_abs_time_range_list[-1]
-
-            # mid = np.mean(t_range)
-            # if self.frame_start <= t_range[1]:
-                # self.diar.segment_abs_time_range_list.pop()
-                # self.diar.segment_raw_audio_list.pop()
-                # cursor_for_old_segments = t_range[0]
-            # else:
-                # break
-        # return cursor_for_old_segments
 
     def _get_update_abs_time(self):
         new_bufflen_sec = self.n_frame_len / self.sr
@@ -1861,6 +1841,31 @@ class ASRWithDiarOnline:
         assert len(sigs_list) == len(sig_rangel_list) == len(sig_indexes)
         return seg_index_offset, sig_indexes
     
+    def callback_sim(self, sample_audio):
+        assert len(sample_audio) == int(self.sr * self.frame_len)
+        start_time = time.time()
+        words, timestamps, pred_diar_labels = self.transcribe(sample_audio)
+        if self.buffer_start >= 0 and (pred_diar_labels != [] and pred_diar_labels != None):
+            self._update_word_and_word_ts(words, timestamps)
+            string_out = self._get_speaker_label_per_word(self.word_seq, self.word_ts_seq, pred_diar_labels)
+            write_txt(f"{self.diar._out_dir}/print_script.sh", string_out.strip())
+            
+        ETA = time.time()-start_time 
+        if self.diar.params['force_real_time']:
+            assert ETA < self.frame_len, "The process has failed to be run in real-time."
+            time.sleep(1.0 - ETA*1.0)
+   
+    def audio_queue_launcher(self, Audio, state=""):
+        try:
+            audio_queue = process_audio_file(Audio)
+            # audio_queue = Audio
+            self.audio_queue_buffer = np.append(self.audio_queue_buffer, audio_queue)
+            while len(self.audio_queue_buffer) > self.CHUNK_SIZE:
+                sample_audio, self.audio_queue_buffer = self.audio_queue_buffer[:self.CHUNK_SIZE], self.audio_queue_buffer[self.CHUNK_SIZE:]
+                self.callback_sim(sample_audio)
+        except:
+            logging.info("Audio stream failed.")
+        return "", ""
     @torch.no_grad()
     def transcribe(self, frame=None, merge=True):
         self.update_frame_to_buffer(frame)
@@ -1892,6 +1897,17 @@ def get_session_list(diar_init, args):
                                                'rttm_path': args.single_rttm_file_path}}
     session_list = [ x[0] for x in  diar_init.AUDIO_RTTM_MAP.items() ]
     return diar_init, session_list
+
+def process_audio_file(file):
+    data, sr = librosa.load(file)
+    SAMPLE_RATE = 16000
+
+    if sr != SAMPLE_RATE:
+        data = librosa.resample(data, orig_sr=sr, target_sr=SAMPLE_RATE)
+
+    # monochannel
+    data = librosa.to_mono(data)
+    return data
 
 
 if __name__ == "__main__":
@@ -1940,10 +1956,48 @@ if __name__ == "__main__":
     # import ipdb; ipdb.set_trace()
     diar = OnlineClusteringDiarizer(cfg=cfg_diar, params=params)
     asr_diar = ASRWithDiarOnline(diar, params, offset=4)
+    asr_diar.args = args
     diar.device = asr_diar.device
     asr_diar.reset()
-    
-    samplerate, sdata = wavfile.read(args.single_audio_file_path)
-    asr_diar.rttm_file_path = args.single_rttm_file_path
-    for i in range(int(np.floor(sdata.shape[0]/asr_diar.n_frame_len))):
-        callback_sim(asr_diar, diar.uniq_id, i, sdata, frame_count=None, time_info=None, status=None)
+    # asr_diar.rttm_file_path = args.single_rttm_file_path
+    asr_diar.uniq_id = get_uniqname_from_filepath(args.single_audio_file_path)
+    simulation = False
+    if simulation:
+        samplerate, sdata = wavfile.read(args.single_audio_file_path)
+        for index in range(int(np.floor(sdata.shape[0]/asr_diar.n_frame_len))):
+            asr_diar.buffer_counter = index
+            sample_audio = sdata[asr_diar.CHUNK_SIZE*(asr_diar.buffer_counter):asr_diar.CHUNK_SIZE*(asr_diar.buffer_counter+1)]
+        
+            while len(audio_queue) < asr_diar.frame_len:
+                asr_diar.callback_sim(sample_audio)
+    else:
+        asr_diar.audio_queue_size = int(4.5 * asr_diar.sr)
+        samplerate, sdata = wavfile.read(args.single_audio_file_path)
+        loop_counter = 0
+        while asr_diar.audio_queue_size*(loop_counter+1) < len(sdata):
+            logging.info(f"----------- Audio Queue Test: loop_counter: {loop_counter}")
+            audio_queue  = sdata[asr_diar.audio_queue_size*(loop_counter):asr_diar.audio_queue_size*(loop_counter+1)]
+            asr_diar.audio_queue_launcher(audio_queue)
+            loop_counter += 1
+
+        isTorch = torch.cuda.is_available()
+        iface = gr.Interface(
+            fn=asr_diar.audio_queue_launcher,
+            inputs=[
+                gr.inputs.Audio(source="microphone", type='filepath'), #streaming=True),
+                # gr.inputs.Audio(source="microphone", type='numpy'), #streaming=True),
+                "state",
+            ],
+            outputs=[
+                "textbox",
+                "state",
+            ],
+            layout="horizontal",
+            theme="huggingface",
+            title=f"NeMo Streaming Conformer CTC Large - English, CUDA:{isTorch}",
+            description="Demo for English speech recognition using Conformer Transducers",
+            allow_flagging='never',
+            live=True,
+        )
+        iface.launch(share=False)
+
