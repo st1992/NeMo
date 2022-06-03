@@ -99,12 +99,17 @@ class MegatronTokenLevelEncoderDecoderModule(MegatronModule):
         layernorm_epsilon=1e-5,
         persist_layer_norm=False,
         bias_gelu_fusion=True,
+        bias_dropout_add_fusion=True,
         masked_softmax_fusion=True,
         openai_gelu=False,
         activation='gelu',
         onnx_safe=False,
+        bias=True,
+        normalization='layernorm',
+        transformer_block_type='pre_ln',
         hidden_steps=-1,
         hidden_blocks=1,
+        headscale=False,
         add_encoder=True,
         add_decoder=True,
     ):
@@ -117,6 +122,7 @@ class MegatronTokenLevelEncoderDecoderModule(MegatronModule):
         self.precision = precision
         self.add_encoder = add_encoder
         self.add_decoder = add_decoder
+        self.normalization = normalization
 
         if kv_channels is None:
             assert (
@@ -161,6 +167,7 @@ class MegatronTokenLevelEncoderDecoderModule(MegatronModule):
                 activations_checkpoint_num_layers=activations_checkpoint_num_layers,
                 layernorm_epsilon=layernorm_epsilon,
                 bias_gelu_fusion=bias_gelu_fusion,
+                bias_dropout_add_fusion=bias_dropout_add_fusion,
                 masked_softmax_fusion=masked_softmax_fusion,
                 persist_layer_norm=persist_layer_norm,
                 openai_gelu=openai_gelu,
@@ -168,6 +175,10 @@ class MegatronTokenLevelEncoderDecoderModule(MegatronModule):
                 hidden_steps=hidden_steps,
                 hidden_blocks=hidden_blocks,
                 activation=activation,
+                bias=bias,
+                normalization=normalization,
+                transformer_block_type=transformer_block_type,
+                headscale=headscale,
                 parent_model_type=ModelType.encoder_and_decoder,
             )
 
@@ -217,6 +228,7 @@ class MegatronTokenLevelEncoderDecoderModule(MegatronModule):
                 activations_checkpoint_num_layers=activations_checkpoint_num_layers,
                 layernorm_epsilon=layernorm_epsilon,
                 bias_gelu_fusion=bias_gelu_fusion,
+                bias_dropout_add_fusion=bias_dropout_add_fusion,
                 masked_softmax_fusion=masked_softmax_fusion,
                 persist_layer_norm=persist_layer_norm,
                 openai_gelu=openai_gelu,
@@ -224,6 +236,10 @@ class MegatronTokenLevelEncoderDecoderModule(MegatronModule):
                 hidden_steps=hidden_steps,
                 hidden_blocks=hidden_blocks,
                 activation=activation,
+                bias=bias,
+                normalization=normalization,
+                transformer_block_type=transformer_block_type,
+                headscale=headscale,
                 parent_model_type=ModelType.encoder_and_decoder,
             )
 

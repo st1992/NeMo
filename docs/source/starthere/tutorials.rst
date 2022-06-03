@@ -127,6 +127,9 @@ To run a tutorial:
    * - NLP
      - Relation Extraction - BioMegatron
      - `Relation Extraction - BioMegatron <https://colab.research.google.com/github/NVIDIA/NeMo/blob/stable/tutorials/nlp/Relation_Extraction-BioMegatron.ipynb>`_
+   * - NLP
+     - P-Tuning/Prompt-Tuning
+     - `P-Tuning/Prompt-Tuning <https://github.com/NVIDIA/NeMo/blob/main/tutorials/nlp/Multitask_Prompt_and_PTuning.ipynb>`_
    * - TTS
      - Speech Synthesis
      - `TTS Inference <https://colab.research.google.com/github/NVIDIA/NeMo/blob/stable/tutorials/tts/Inference_ModelSelect.ipynb>`_
@@ -146,11 +149,11 @@ To run a tutorial:
      - CTC Segmentation
      - `CTC Segmentation <https://colab.research.google.com/github/NVIDIA/NeMo/blob/stable/tutorials/tools/CTC_Segmentation_Tutorial.ipynb>`_
    * - Text Processing
-     - Text Normalization for TTS
-     - `Text Normalization <https://colab.research.google.com/github/NVIDIA/NeMo/blob/stable/tutorials/text_processing/Text_Normalization.ipynb>`_
+     - Text Normalization and Inverse Normalization for ASR and TTS
+     - `Text Normalization <https://colab.research.google.com/github/NVIDIA/NeMo/blob/stable/tutorials/text_processing/Text_(Inverse)_Normalization.ipynb>`_
    * - Text Processing
-     - Inverse Text Normalization for ASR
-     - `Inverse Text Normalization <https://colab.research.google.com/github/NVIDIA/NeMo/blob/stable/tutorials/text_processing/Inverse_Text_Normalization.ipynb>`_
+     - Inverse Text Normalization for ASR - Thutmose Tagger
+     - `Inverse Text Normalization with Thutmose Tagger <https://colab.research.google.com/github/NVIDIA/NeMo/blob/stable/tutorials/text_processing/ITN_with_Thutmose_Tagger.ipynb>`_
    * - Text Processing
      - Constructing Normalization Grammars with WFSTs
-     - `WFST Tutorial <https://github.com/NVIDIA/NeMo/blob/main/tutorials/text_processing/WFST_Tutorial.ipynb>`_
+     - `WFST Tutorial <https://colab.research.google.com/github/NVIDIA/NeMo/blob/stable/tutorials/text_processing/WFST_Tutorial.ipynb>`_
