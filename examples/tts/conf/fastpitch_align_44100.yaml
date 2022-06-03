@@ -37,7 +37,7 @@ model:
 
   n_speakers: 1
   max_token_duration: 75
-  symbols_embedding_dim: 384
+  symbols_embedding_dim: 384  # TODO (xueyang): why bother such large number if only less than 5 speakers are used? it would lead to over completion problem.
   pitch_embedding_kernel_size: 3
 
   pitch_fmin: ${pitch_fmin}

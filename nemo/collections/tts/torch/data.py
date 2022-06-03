@@ -448,10 +448,12 @@ class TTSDataset(Dataset):
         if AlignPriorMatrix in self.sup_data_types_set:
             if self.use_beta_binomial_interpolator:
                 mel_len = self.get_log_mel(audio).shape[2]
+                # TODO (xueyang): remove self because redundant.
                 align_prior_matrix = torch.from_numpy(self.beta_binomial_interpolator(mel_len, text_length.item()))
             else:
                 prior_path = self.align_prior_matrix_folder / f"{rel_audio_path_as_text_id}.pt"
 
+                # TODO (xueyang): profile to know which is faster: on-the-fly vs torch.load.
                 if prior_path.exists():
                     align_prior_matrix = torch.load(prior_path)
                 else:
