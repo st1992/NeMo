@@ -110,8 +110,8 @@ class CardinalFst(GraphFst):
             pynutil.delete(pynini.closure("0")) + pynini.difference(NEMO_DIGIT, "0") + pynini.closure(NEMO_DIGIT), "0"
         )
 
-        labels_exception = [num_to_word(x) for x in range(0, 13)]
-        graph_exception = pynini.union(*labels_exception)
+#         labels_exception = [num_to_word(x) for x in range(0, 13)]
+#         graph_exception = pynini.union(*labels_exception)
 
         graph = (
             pynini.cdrewrite(pynutil.delete("and"), NEMO_SPACE, NEMO_SPACE, NEMO_SIGMA)
@@ -121,7 +121,7 @@ class CardinalFst(GraphFst):
 
         self.graph_no_exception = graph
 
-        self.graph = (pynini.project(graph, "input") - graph_exception.arcsort()) @ graph
+        self.graph = (pynini.project(graph, "input")) @ graph
 
         optional_minus_graph = pynini.closure(
             pynutil.insert("negative: ") + pynini.cross("minus", "\"-\"") + NEMO_SPACE, 0, 1
